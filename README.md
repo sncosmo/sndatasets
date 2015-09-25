@@ -6,6 +6,11 @@ Download and normalize published supernova photometric data
 
 ## Current API
 
-`sndatasets.fetch_nearby99()`: download and parse Nearby set from Kowalski et al 2008. Returns dictionary of astropy Tables, keyed by SN name.
+The following functions return a dictionary of `astropy.table.Table`s,
+with each table holding the photometric data for a supernova. The
+dictionary is keyed by the supernova name.
+
+- `sndatasets.fetch_kowalski08()`: Nearby 99 sample from Kowalski et al 2008.
+- `sndatasets.fetch_hamuy96()`: Calan-Tololo sample from Hamuy et al1996.
 
 Uses `sndatasets.CACHE_DIR` to cache downloaded files. Default is `'cache'`.
