@@ -4,179 +4,18 @@ sndatasets : Download and normalize published SN photometric data.
 
 from __future__ import print_function
 
-import math
-import os
-from os.path import join
-from six.moves.urllib.request import urlopen
 from collections import OrderedDict
+import os
 
 import numpy as np
 from astropy.io import ascii
 from astropy.table import Table
 
-# CDS FTP:
-# CDS_PREFIX = "ftp://cdsarc.u-strasbg.fr/pub/cats/J/"
-# example postfix: ApJ/686/749/table10.[dat,fit]
-# but FITS download through FTP seems broken, so we use http here.
-CDS_PREFIX = "http://cdsarc.u-strasbg.fr/vizier/ftp/cats/"
-#CDS_PREFIX = "http://cdsarc.u-strasbg.fr/viz-bin/nph-Cat/"
-CACHE_DIR = "cache"
+from .utils import (download_file, hms_to_deg, sdms_to_deg, pivot_table,
+                    mag_to_flux, jd_to_mjd, sxhr_to_deg, sx_to_deg,
+                    fetch_sn_positions, CACHE_DIR, CDS_PREFIX)
 
-def _download_file(url, subdir):
-    """Download a file from url, save to CACHE_DIR/subdir"""
-
-    fname = url.split('/')[-1]
-    destdir = join(CACHE_DIR, subdir)
-    dest = join(destdir, fname)
-
-    if os.path.exists(dest):
-        return
-
-    os.makedirs(destdir, exist_ok=True)
-
-    r = urlopen(url)
-    with open(dest, "wb") as f:
-        f.write(r.read())
-
-
-def pivot_table(t, valuecolname, colpatterns, values):
-    """Pivot the table. Similar to gather in tidyr but allows groups of
-    columns.
-
-    Parameters
-    ----------
-    t : astropy.table.Table
-    valuecolname : str
-    colpatterns : iterable of str
-        e.g., ['{}mag', 'e_{}mag']
-    values : iterable of str
-        e.g., ['B', 'V', 'R', 'I']
-    """
-
-    # all column names we will remove.
-    remove = [p.format(v) for v in values for p in colpatterns]
-
-    # replacement column names.
-    add = [p.format('') for p in colpatterns]
-    add_dtypes = [t[p.format(values[0])].dtype for p in colpatterns]
-
-    # existing columns to keep.
-    keep = list(filter(lambda name: name not in remove, t.colnames))
-
-    # create new table
-    colnames = keep + [valuecolname] + add
-    nrows = len(values) * len(t)
-    data = [np.repeat(t[name], len(values)) for name in keep]
-    data.append(np.tile(values, len(t)))
-    data.extend([np.empty(nrows, dtype=dt) for dt in add_dtypes])
-    reshaped = Table(data, names=colnames, copy=False, masked=t.masked)
-
-    # fill new empty columns
-    for i, v in enumerate(values):
-        for p in colpatterns:
-            addcol = p.format('')
-            removecol = p.format(v)
-            reshaped[addcol][i::len(values)] = t[removecol]
-
-    return reshaped
-
-
-def hms_to_deg(h, m, s):
-    return 15. * (h + m / 60. + s / 3600.)
-
-
-def sxhr_to_deg(s):
-    """sexagesimal hours to degrees"""
-    h, m, s = s.split(':')
-    return hms_to_deg(int(h), int(m), float(s))
-
-
-def sdms_to_deg(sign, d, m, s):
-    sign = 1. - 2. * (sign == '-')
-    return sign * (d + m / 60. + s / 3600.)
-
-
-def sx_to_deg(s):
-    """sexagesimal to degrees. Sign must be the first character"""
-    sign = s[0]
-    d, m, s = s.split(':')
-    return sdms_to_deg(sign, abs(int(d)), int(m), float(s))
-
-
-def jd_to_mjd(t):
-    return t - 2400000.5
-
-
-def mag_to_flux(m, me, zp):
-    """Convert magnitude and magnitude error to flux, given a zeropoint."""
-    
-    f = 10.**(0.4 * (zp - m))
-    fe = math.log(10.) * 0.4 * me * f
-
-    return f, fe
-
-
-def radec_to_xyz(ra, dec):
-    x = math.cos(np.deg2rad(ra)) * math.cos(np.deg2rad(ra))
-    y = math.cos(np.deg2rad(dec)) * math.sin(np.deg2rad(ra))
-    z = math.sin(np.deg2rad(dec))
-
-    return np.array([x, y, z], dtype=float64)
-
-
-def cmb_dz(ra, dec):
-    """See http://arxiv.org/pdf/astro-ph/9609034
-     CMBcoordsRA = 167.98750000 # J2000 Lineweaver
-     CMBcoordsDEC = -7.22000000
-    """
-
-    # J2000 coords from NED
-    CMB_DZ = 371000. / 299792458.
-    CMB_RA = 168.01190437
-    CMB_DEC = -6.98296811
-    CMB_XYZ = radec_to_xyz(CMB_RA, CMB_DEC)
-
-    coords_xyz = radec_to_xyz(ra, dec)
-    
-    dz = CMB_DZ * np.dot(CMB_XYZ, coords_xyz)
-
-    return dz
-
-
-def helio_to_cmb(z, ra, dec):
-    """Convert from heliocentric redshift to CMB-frame redshift.
-    
-    Parameters
-    ----------
-    z : float
-        Heliocentric redshift.
-    ra, dec: float
-        RA and Declination in degrees (J2000).
-    """
-
-    dz = -cmb_dz(ra, dec)
-    one_plus_z_pec = math.sqrt((1. + dz) / (1. - dz))
-    one_plus_z_CMB = (1. + z) / one_plus_z_pec
-
-    return one_plus_z_CMB - 1.
-
-
-def cmb_to_helio(z, ra, dec):
-    """Convert from CMB-frame redshift to heliocentric redshift.
-    
-    Parameters
-    ----------
-    z : float
-        CMB-frame redshift.
-    ra, dec: float
-        RA and Declination in degrees (J2000).
-    """
-
-    dz = -cmb_dz(ra, dec)
-    one_plus_z_pec = math.sqrt((1. + dz) / (1. - dz))
-    one_plus_z_helio = (1. + z) * one_plus_z_pec
-
-    return one_plus_z_helio - 1.
+__all__ = ["fetch_kowalski08", "fetch_hamuy96", "fetch_krisciunas"]
 
 
 def fetch_kowalski08():
@@ -184,18 +23,18 @@ def fetch_kowalski08():
     Nearby 99 set from Kowalski et al 2008
     http://adsabs.harvard.edu/abs/2008ApJ...686..749K
     """
-    _download_file(CDS_PREFIX + "J/ApJ/686/749/ReadMe", "k08")
-    _download_file(CDS_PREFIX + "J/ApJ/686/749/table1.dat", "k08")
-    _download_file(CDS_PREFIX + "J/ApJ/686/749/table10.dat", "k08")
+    download_file(CDS_PREFIX + "J/ApJ/686/749/ReadMe", "kowalski08")
+    download_file(CDS_PREFIX + "J/ApJ/686/749/table1.dat", "kowalski08")
+    download_file(CDS_PREFIX + "J/ApJ/686/749/table10.dat", "kowalski08")
 
     # Parse SN coordinates and redshifts
-    meta = ascii.read("cache/k08/table1.dat", format='cds',
-                      readme="cache/k08/ReadMe")
+    meta = ascii.read("cache/kowalski08/table1.dat", format='cds',
+                      readme="cache/kowalski08/ReadMe")
     ra = hms_to_deg(meta['RAh'], meta['RAm'], meta['RAs'])
     dec = sdms_to_deg(meta['DE-'], meta['DEd'], meta['DEm'], meta['DEs'])
 
-    data = ascii.read("cache/k08/table10.dat", format='cds',
-                      readme="cache/k08/ReadMe")
+    data = ascii.read("cache/kowalski08/table10.dat", format='cds',
+                      readme="cache/kowalski08/ReadMe")
     data = data.filled(0.)  # convert from masked table
 
     data = pivot_table(data, 'band', ['{}mag', 'e_{}mag'],
@@ -234,10 +73,12 @@ def fetch_hamuy96():
     http://adsabs.harvard.edu/abs/1996AJ....112.2408H
 
     Photometry has been corrected to Bessell filters.
+
+    Position and heliocentric redshift metadata is hard-coded.
     """
 
-    _download_file(CDS_PREFIX + "J/AJ/112/2408/ReadMe", "h96")
-    _download_file(CDS_PREFIX + "J/AJ/112/2408/table4.dat", "h96")
+    download_file(CDS_PREFIX + "J/AJ/112/2408/ReadMe", "hamuy96")
+    download_file(CDS_PREFIX + "J/AJ/112/2408/table4.dat", "hamuy96")
 
     # TODO authoritative source for this metadata?
     # NOTE: commented-out lines are SNe not in the phtometric data table.
@@ -277,8 +118,8 @@ def fetch_hamuy96():
             '1993ag': ('10:03:35.00', '-35:27:47.6', 0.0490),
             '1993ah': ('23:51:50.27', '-27:57:47.0', 0.0297)}
 
-    data = ascii.read("cache/h96/table4.dat", format='cds',
-                      readme="cache/h96/ReadMe")
+    data = ascii.read("cache/hamuy96/table4.dat", format='cds',
+                      readme="cache/hamuy96/ReadMe")
     data = data.filled(0.)
 
     data = pivot_table(data, 'band', ['{}mag', 'e_{}mag'],
@@ -297,7 +138,7 @@ def fetch_hamuy96():
         sndata = data[data['SN'] == name]
 
         time = jd_to_mjd(sndata['HJD'])
-        band = np.char.add('bessell', sndata['band'])
+        band = np.char.add('bessell', np.char.lower(sndata['band']))
         zp = 29. * np.ones(len(sndata), dtype=np.float64)
         zpsys = len(sndata) * ['vega']
         flux, fluxerr = mag_to_flux(sndata['mag'], sndata['e_mag'], zp)
@@ -309,10 +150,44 @@ def fetch_hamuy96():
 
     return sne
 
-    
 
-# testing
-if __name__ == "__main__":
-    sne = fetch_kowalski08()
+def fetch_krisciunas():
+    """Load the following SNe:
 
-    sne = fetch_hamuy96()
+    1999aa 2000ApJ...539..658K Table 2
+    1999cl 2000ApJ...539..658K Table 4
+    1999cp 2000ApJ...539..658K Table 4
+
+    Photometry has been corrected to Bessell filters.
+    """
+
+    from pkg_resources import resource_stream
+
+    # Metadata
+    z_helio = OrderedDict([("1999aa", 0.014443),
+                           ("1999cc", 0.031328),
+                           ("1999cl", 0.007609),
+                           ("1999cp", 0.009480),
+                           ("1999da", 0.012695),
+                           ("1999dk", 0.014960),
+                           ("1999ek", 0.017522),
+                           ("1999gp", 0.026745),
+                           ("2000bh", 0.022809),
+                           ("2000bk", 0.025444),
+                           ("2000ca", 0.023616),
+                           ("2000ce", 0.016305),
+                           ("2000cf", 0.036425),
+                           ("2001ba", 0.029557),
+                           ("2001bt", 0.014637),
+                           ("2001cn", 0.015154),
+                           ("2001cz", 0.015489),
+                           ("2001el", 0.003896),
+                           ("2002bo", 0.004240)])
+
+    # Fetch positions to local file in cache.
+    posfile = os.path.join(CACHE_DIR, "krisciunas/positions.csv")
+    if not os.path.exists(posfile):
+        os.makedirs(os.path.dirname(posfile), exist_ok=True)
+    fetch_sn_positions(list(z_helio.keys()), posfile)
+
+    f = resource_stream(__name__, 'data/krisciunas00/table2.txt')
