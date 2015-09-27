@@ -13,7 +13,13 @@ from astropy.table import Table
 
 from .utils import (download_file, hms_to_deg, sdms_to_deg, pivot_table,
                     mag_to_flux, jd_to_mjd, sxhr_to_deg, sx_to_deg,
-                    fetch_sn_positions, CACHE_DIR, CDS_PREFIX)
+                    fetch_sn_positions, CACHE_DIR)
+
+# CDS_PREFIX = "ftp://cdsarc.u-strasbg.fr/pub/cats/J/"
+# example postfix: ApJ/686/749/table10.[dat,fit]
+# but FITS download through FTP seems broken, so we use http here.
+CDS_PREFIX = "http://cdsarc.u-strasbg.fr/vizier/ftp/cats/"
+#CDS_PREFIX = "http://cdsarc.u-strasbg.fr/viz-bin/nph-Cat/"
 
 __all__ = ["fetch_kowalski08", "fetch_hamuy96", "fetch_krisciunas"]
 

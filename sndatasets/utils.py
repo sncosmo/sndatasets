@@ -11,12 +11,6 @@ import numpy as np
 from astropy.io import ascii
 from astropy.table import Table
 
-
-# CDS_PREFIX = "ftp://cdsarc.u-strasbg.fr/pub/cats/J/"
-# example postfix: ApJ/686/749/table10.[dat,fit]
-# but FITS download through FTP seems broken, so we use http here.
-CDS_PREFIX = "http://cdsarc.u-strasbg.fr/vizier/ftp/cats/"
-#CDS_PREFIX = "http://cdsarc.u-strasbg.fr/viz-bin/nph-Cat/"
 CACHE_DIR = "cache"
 
 def info(s):
