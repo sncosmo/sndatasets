@@ -1,92 +1,9 @@
-from __future__ import print_function
+"""General utilities."""
 
 import math
-import os
-from os.path import join
-import sys
-from six.moves.urllib.request import urlopen
-from collections import OrderedDict
 
 import numpy as np
-from astropy.io import ascii
 from astropy.table import Table
-
-CACHE_DIR = "cache"
-
-def info(s):
-    """Print a message with some formatting."""
-
-    print("\033[1m\033[34mINFO: {}\033[0m".format(s))
-    sys.stdout.flush()
-
-
-def download_file(url, subdir):
-    """Download a file from url, save to CACHE_DIR/subdir"""
-
-    fname = url.split('/')[-1]
-    destdir = join(CACHE_DIR, subdir)
-    dest = join(destdir, fname)
-
-    if os.path.exists(dest):
-        return
-
-    os.makedirs(destdir, exist_ok=True)
-
-    info("get " + url)
-    r = urlopen(url)
-    with open(dest, "wb") as f:
-        f.write(r.read())
-
-
-def query_ned_position(name):
-    """Return RA, Dec (J2000) for named objects, queried from NED.
-
-    Parameters
-    ----------
-    names : str
-        list of SN names, e.g., "SN 1999aa" or "SN1999aa".
-    
-    Returns
-    -------
-    ra, dec : float
-        RA, Dec position in degrees.
-    """
-
-    
-    url = ("http://ned.ipac.caltech.edu/cgi-bin/objsearch?objname={}"
-           "&out_csys=Equatorial&out_equinox=J2000.0&of=ascii_bar"
-           "&list_limit=5&img_stamp=NO").format(name)
-    info("fetching {} position from ned.ipac.caltech.edu".format(name))
-    r = urlopen(url)
-    lastline = r.read().decode('utf-8').split('\n')[-2]
-    items = lastline.split('|')
-    if items[0] != '1':
-        raise RuntimeError("more than one position returned for {}"
-                           .format(name))
-
-    return float(items[2]), float(items[3])
-
-
-def fetch_sn_positions(names, dest):
-    """Fetch SN positions from NED and save to a target csv file.
-
-    Parameters
-    ----------
-    names : list
-        Names such as '1999aa' (no "SN" prefix). "SN" will be prepended in
-        the query.
-    """
-
-    rows = ["name,ra,dec"]
-    for name in names:
-        ra, dec = query_ned_position('SN' + name)
-        rows.append("{},{},{}".format(name, ra, dec))
-
-    # Postpone writing file until after all the queries have succeeded.
-    with open(dest, 'w') as f:
-        for row in rows:
-            f.write(row)
-            f.write('\n')
 
 
 def pivot_table(t, valuecolname, colpatterns, values):

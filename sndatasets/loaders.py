@@ -11,36 +11,35 @@ import numpy as np
 from astropy.io import ascii
 from astropy.table import Table
 
-from .utils import (download_file, hms_to_deg, sdms_to_deg, pivot_table,
-                    mag_to_flux, jd_to_mjd, sxhr_to_deg, sx_to_deg,
-                    fetch_sn_positions, CACHE_DIR)
+from .dlutils import download_file, download_sn_positions
+from .utils import (hms_to_deg, sdms_to_deg, pivot_table,
+                    mag_to_flux, jd_to_mjd, sxhr_to_deg, sx_to_deg)
 
-# CDS_PREFIX = "ftp://cdsarc.u-strasbg.fr/pub/cats/J/"
-# example postfix: ApJ/686/749/table10.[dat,fit]
-# but FITS download through FTP seems broken, so we use http here.
+
 CDS_PREFIX = "http://cdsarc.u-strasbg.fr/vizier/ftp/cats/"
-#CDS_PREFIX = "http://cdsarc.u-strasbg.fr/viz-bin/nph-Cat/"
-
-__all__ = ["fetch_kowalski08", "fetch_hamuy96", "fetch_krisciunas"]
 
 
-def fetch_kowalski08():
+__all__ = ["load_kowalski08", "load_hamuy96", "load_krisciunas"]
+
+
+def load_kowalski08():
     """
     Nearby 99 set from Kowalski et al 2008
     http://adsabs.harvard.edu/abs/2008ApJ...686..749K
     """
-    download_file(CDS_PREFIX + "J/ApJ/686/749/ReadMe", "kowalski08")
-    download_file(CDS_PREFIX + "J/ApJ/686/749/table1.dat", "kowalski08")
-    download_file(CDS_PREFIX + "J/ApJ/686/749/table10.dat", "kowalski08")
+    
+    readme = download_file(CDS_PREFIX + "J/ApJ/686/749/ReadMe", "kowalski08")
+    table1 = download_file(CDS_PREFIX + "J/ApJ/686/749/table1.dat",
+                           "kowalski08")
+    table10 = download_file(CDS_PREFIX + "J/ApJ/686/749/table10.dat",
+                            "kowalski08")
 
     # Parse SN coordinates and redshifts
-    meta = ascii.read("cache/kowalski08/table1.dat", format='cds',
-                      readme="cache/kowalski08/ReadMe")
+    meta = ascii.read(table1, format='cds', readme=readme)
     ra = hms_to_deg(meta['RAh'], meta['RAm'], meta['RAs'])
     dec = sdms_to_deg(meta['DE-'], meta['DEd'], meta['DEm'], meta['DEs'])
 
-    data = ascii.read("cache/kowalski08/table10.dat", format='cds',
-                      readme="cache/kowalski08/ReadMe")
+    data = ascii.read(table10, format='cds', readme=readme)
     data = data.filled(0.)  # convert from masked table
 
     data = pivot_table(data, 'band', ['{}mag', 'e_{}mag'],
@@ -74,7 +73,7 @@ def fetch_kowalski08():
 
     return sne
 
-def fetch_hamuy96():
+def load_hamuy96():
     """Hamuy et al. 1996 AJ 112 2408 "Calan Tololo" sample
     http://adsabs.harvard.edu/abs/1996AJ....112.2408H
 
@@ -83,8 +82,8 @@ def fetch_hamuy96():
     Position and heliocentric redshift metadata is hard-coded.
     """
 
-    download_file(CDS_PREFIX + "J/AJ/112/2408/ReadMe", "hamuy96")
-    download_file(CDS_PREFIX + "J/AJ/112/2408/table4.dat", "hamuy96")
+    readme = download_file(CDS_PREFIX + "J/AJ/112/2408/ReadMe", "hamuy96")
+    table4 = download_file(CDS_PREFIX + "J/AJ/112/2408/table4.dat", "hamuy96")
 
     # TODO authoritative source for this metadata?
     # NOTE: commented-out lines are SNe not in the phtometric data table.
@@ -124,8 +123,7 @@ def fetch_hamuy96():
             '1993ag': ('10:03:35.00', '-35:27:47.6', 0.0490),
             '1993ah': ('23:51:50.27', '-27:57:47.0', 0.0297)}
 
-    data = ascii.read("cache/hamuy96/table4.dat", format='cds',
-                      readme="cache/hamuy96/ReadMe")
+    data = ascii.read(table4, format='cds', readme=readme)
     data = data.filled(0.)
 
     data = pivot_table(data, 'band', ['{}mag', 'e_{}mag'],
@@ -157,7 +155,7 @@ def fetch_hamuy96():
     return sne
 
 
-def fetch_krisciunas():
+def load_krisciunas():
     """Load the following SNe:
 
     1999aa 2000ApJ...539..658K Table 2
@@ -190,10 +188,8 @@ def fetch_krisciunas():
                            ("2001el", 0.003896),
                            ("2002bo", 0.004240)])
 
-    # Fetch positions to local file in cache.
-    posfile = os.path.join(CACHE_DIR, "krisciunas/positions.csv")
-    if not os.path.exists(posfile):
-        os.makedirs(os.path.dirname(posfile), exist_ok=True)
-    fetch_sn_positions(list(z_helio.keys()), posfile)
+    # Load positions to local file in cache.
+    posfname = download_sn_positions(z_helio.keys(),
+                                     join('krisciunas', 'positions.csv')
 
     f = resource_stream(__name__, 'data/krisciunas00/table2.txt')
