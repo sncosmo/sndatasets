@@ -6,44 +6,58 @@ import numpy as np
 from astropy.table import Table
 
 
-def pivot_table(t, valuecolname, colpatterns, values):
+def pivot_table(t, value_col_name, colfmts, values, colfmts_replace=None,
+                values_replace=None):
     """Pivot the table. Similar to gather in tidyr but allows groups of
     columns.
 
     Parameters
     ----------
     t : astropy.table.Table
-    valuecolname : str
-    colpatterns : iterable of str
+    value_col_name : str
+    colfmts : iterable of str
         e.g., ['{}mag', 'e_{}mag']
     values : iterable of str
         e.g., ['B', 'V', 'R', 'I']
+    colfmts_replace : iterable of str, optional
+        If given, new columns will have these names instead of `colfmts`
+        with an empty string.
+    values_replace : iterable of str, optional
+        If given, values will be replaced with these 
     """
 
     # all column names we will remove.
-    remove = [p.format(v) for v in values for p in colpatterns]
+    remove = [colfmt.format(v) for v in values for colfmt in colfmts]
+
+    if values_replace is not None:
+        assert len(values_replace) == len(values)
+    else:
+        values_replace = values
 
     # replacement column names.
-    add = [p.format('') for p in colpatterns]
-    add_dtypes = [t[p.format(values[0])].dtype for p in colpatterns]
+    if colfmts_replace is not None:
+        add = colfmts_replace
+    else:
+        add = [colfmt.format('') for colfmt in colfmts]
+
+    add_dtypes = [t[colfmt.format(values[0])].dtype for colfmt in colfmts]
 
     # existing columns to keep.
     keep = list(filter(lambda name: name not in remove, t.colnames))
 
     # create new table
-    colnames = keep + [valuecolname] + add
+    colnames = keep + [value_col_name] + add
     nrows = len(values) * len(t)
     data = [np.repeat(t[name], len(values)) for name in keep]
-    data.append(np.tile(values, len(t)))
+    data.append(np.tile(values_replace, len(t)))
     data.extend([np.empty(nrows, dtype=dt) for dt in add_dtypes])
     reshaped = Table(data, names=colnames, copy=False, masked=t.masked)
 
     # fill new empty columns
     for i, v in enumerate(values):
-        for p in colpatterns:
-            addcol = p.format('')
-            removecol = p.format(v)
-            reshaped[addcol][i::len(values)] = t[removecol]
+        for colfmt, addname in zip(colfmts, add):
+            removecol = colfmt.format(v)
+            reshaped[addname][i::len(values)] = t[removecol]
 
     return reshaped
 

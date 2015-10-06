@@ -16,7 +16,7 @@ def info(s):
     sys.stdout.flush()
 
 
-def download_file(url, cachedir)
+def download_file(url, cachedir):
     """Download a file from url, cache it, return path to cached file."""
 
     destdir = join(CACHE_DIR, subdir)

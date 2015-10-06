@@ -6,6 +6,7 @@ from __future__ import print_function
 
 from collections import OrderedDict
 import os
+from os.path import join
 
 import numpy as np
 from astropy.io import ascii
@@ -167,6 +168,8 @@ def load_krisciunas():
 
     from pkg_resources import resource_stream
 
+    sne = {}
+
     # Metadata
     z_helio = OrderedDict([("1999aa", 0.014443),
                            ("1999cc", 0.031328),
@@ -188,8 +191,60 @@ def load_krisciunas():
                            ("2001el", 0.003896),
                            ("2002bo", 0.004240)])
 
-    # Load positions to local file in cache.
+    # Get positions
     posfname = download_sn_positions(z_helio.keys(),
-                                     join('krisciunas', 'positions.csv')
+                                     join('krisciunas', 'positions.csv'))
+    
 
-    f = resource_stream(__name__, 'data/krisciunas00/table2.txt')
+
+    # krsciunas00
+    for name, fname in [('1999aa', 'table2.txt'),
+                        ('1999cl', 'table4.txt'),
+                        ('1999cp', 'table6.txt')]:
+        f = resource_stream(__name__, join('data', 'krisciunas00', fname))
+        data = ascii.read(f, format='fixed_width_no_header',
+                          names=('time', 'v', 'v_err', 'b-v', 'b-v_err',
+                                 'v-r', 'v-r_err', 'v-i', 'v-i_err'),
+                          col_starts=(0, 21, 29, 36, 44, 51, 59, 66, 74),
+                          col_ends=(7, 26, 33, 41, 48, 56, 63, 71, 78))
+
+        data['vmag'] = data['v']
+        data['vmag_err'] = data['v_err']
+        data['bmag'] = data['b-v'] + data['v']
+        data['bmag_err'] = np.sqrt(data['b-v_err']**2 + data['v_err']**2)
+        data['rmag'] = data['v'] - data['v-r']
+        data['rmag_err'] = np.sqrt(data['v-r_err']**2 + data['v_err']**2)
+        data['imag'] = data['v'] - data['v-i']
+        data['imag_err'] = np.sqrt(data['v-i_err']**2 + data['v_err']**2)
+        for colname in ['v', 'v_err', 'b-v', 'b-v_err', 'v-r', 'v-r_err', 'v-i', 'v-i_err']:
+            del data[colname]
+
+        if data.masked:
+            data = data.filled(-100.)
+
+        data = pivot_table(data, 'band', ['{}mag', '{}mag_err'],
+                           ['b', 'v', 'r', 'i'])
+#                           colfmts_replace=['mag', 'magerr'],
+#                           values_replace=['bessellb', 'bessellv',
+#                                           'bessellr', 'besselli'])
+
+        data = data[data['mag'] != -100.]  # eliminate missing values
+
+        snmeta = OrderedDict([('name', name),
+                              ('dataset', 'krisciunas'),
+                              ('z_helio', z_helio[name]),
+                              ('ra', 0.),  # TODO: fill in ra from file
+                              ('dec', 0.)])  # TODO: fill in dec from file
+
+        time = data['time'] + 2451000.0
+        band = np.char.add('bessell', data['band'])
+        zp = 29. * np.ones(len(data), dtype=np.float64)
+        zpsys = len(data) * ['vega']
+        flux, fluxerr = mag_to_flux(data['mag'], data['mag_err'], zp)
+
+        sne[name] = Table([time, band, flux, fluxerr, zp, zpsys],
+                          names=('time', 'band', 'flux', 'fluxerr', 'zp',
+                                 'zpsys'),
+                          meta=snmeta)
+
+    return sne
