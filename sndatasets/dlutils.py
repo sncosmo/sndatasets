@@ -19,7 +19,7 @@ def info(s):
 def download_file(url, cachedir):
     """Download a file from url, cache it, return path to cached file."""
 
-    destdir = join(CACHE_DIR, subdir)
+    destdir = join(CACHE_DIR, cachedir)
     destpath = join(destdir, url.split('/')[-1])
 
     if not os.path.exists(destpath):
