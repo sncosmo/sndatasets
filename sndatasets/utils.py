@@ -98,11 +98,11 @@ def mag_to_flux(m, me, zp):
 
 
 def radec_to_xyz(ra, dec):
-    x = math.cos(np.deg2rad(ra)) * math.cos(np.deg2rad(ra))
+    x = math.cos(np.deg2rad(dec)) * math.cos(np.deg2rad(ra))
     y = math.cos(np.deg2rad(dec)) * math.sin(np.deg2rad(ra))
     z = math.sin(np.deg2rad(dec))
 
-    return np.array([x, y, z], dtype=float64)
+    return np.array([x, y, z], dtype=np.float64)
 
 
 def cmb_dz(ra, dec):
